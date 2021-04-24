@@ -169,6 +169,7 @@ fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
                     match nc {
                         '"' => s.push('"'),
                         'n' => s.push('\n'),
+                        '\\' => s.push('\\'),
                         _ => panic!(),
                     }
                     it.next();
@@ -280,6 +281,11 @@ mod tests {
             let s = "\"a\\nb\"";
             let v = tokenize(&s.to_string());
             assert_eq!(v, vec![Token::Str("a\nb".into()),]);
+        }
+        {
+            let s = "\"a\\\\b\"";
+            let v = tokenize(&s.to_string());
+            assert_eq!(v, vec![Token::Str("a\\b".into()),]);
         }
 
         {
