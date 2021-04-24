@@ -165,11 +165,15 @@ fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
         match c {
             '\n' => panic!("unexpected newline"),
             '\\' => {
-                if it.peek() == Some(&'"') {
-                    s.push('"');
+                if let Some(nc) = it.peek() {
+                    match nc {
+                        '"' => s.push('"'),
+                        'n' => s.push('\n'),
+                        _ => panic!(),
+                    }
                     it.next();
                 } else {
-                    panic!("unsupported escape sequence");
+                    panic!("unexpected EOF");
                 }
             }
             '"' => return s,
@@ -270,6 +274,12 @@ mod tests {
                     Token::RightParen,
                 ]
             );
+        }
+
+        {
+            let s = "\"a\\nb\"";
+            let v = tokenize(&s.to_string());
+            assert_eq!(v, vec![Token::Str("a\nb".into()),]);
         }
 
         {
