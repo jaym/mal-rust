@@ -111,7 +111,7 @@ enum Token {
     RightCurly,
     SingleQuote,
     Tick,
-    Int(u64),
+    Int(i64),
     Str(String),
     Lit(String),
 }
@@ -153,14 +153,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
     Ok(result)
 }
 
-fn read_number<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_digit: char) -> u64 {
-    let mut v = first_digit.to_digit(10).unwrap() as u64;
+fn read_number<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_digit: char) -> i64 {
+    let mut v = first_digit.to_digit(10).unwrap() as i64;
 
     while let Some(&c) = it.peek() {
         match c {
             '0'..='9' => {
                 it.next();
-                let num = c.to_digit(10).unwrap() as u64;
+                let num = c.to_digit(10).unwrap() as i64;
                 v = v * 10 + num;
             }
             _ => break,

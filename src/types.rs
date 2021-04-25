@@ -14,7 +14,7 @@ pub enum MalAtom {
     False,
     Sym(String),
     Str(String),
-    Int(u64),
+    Int(i64),
 }
 
 impl Display for MalVal {
