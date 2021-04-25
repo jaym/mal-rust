@@ -1,4 +1,3 @@
-use rustyline;
 use rustyline::error::ReadlineError;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
@@ -9,7 +8,7 @@ mod types;
 
 fn read(input: &str) -> reader::Result<MalVal> {
     let mut v = reader::read_str(input)?;
-    if v.len() > 0 {
+    if !v.is_empty() {
         Ok(v.swap_remove(0))
     } else {
         Ok(MalVal::Atom(MalAtom::Nil))
@@ -52,7 +51,7 @@ impl Validator for InputValidator {
         let result = if let Err(parse_err) = read(input) {
             match parse_err {
                 reader::ParseError::EOF => Incomplete,
-                _ => Invalid(Some(format!(" ---< {}", parse_err).to_owned())),
+                _ => Invalid(Some(format!(" ---< {}", parse_err))),
             }
         } else {
             Valid(None)

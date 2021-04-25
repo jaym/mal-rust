@@ -51,7 +51,7 @@ where
     let mut it = seq.into_iter().peekable();
     while let Some(v) = it.next() {
         write!(f, "{}", v)?;
-        if let Some(_) = it.peek() {
+        if it.peek().is_some() {
             f.write_str(" ")?
         }
     }

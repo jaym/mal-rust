@@ -5,6 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("Unexpected EOF")]
+    #[allow(clippy::upper_case_acronyms)]
     EOF,
     #[error("Unexpected token {0}")]
     UnxpectedToken(String),
@@ -16,17 +17,19 @@ pub enum ParseError {
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-pub fn read_str<'a>(input: &'a str) -> Result<Vec<MalVal>> {
+pub fn read_str(input: &str) -> Result<Vec<MalVal>> {
     let tokens = tokenize(input)?;
     let mut it = tokens.into_iter().peekable();
     let mut ret = Vec::new();
-    while let Some(_) = it.peek() {
-        read_form(&mut it)?.map(|f| ret.push(f));
+    while it.peek().is_some() {
+        if let Some(f) = read_form(&mut it)? {
+            ret.push(f)
+        }
     }
     Ok(ret)
 }
 
-fn read_form<'a, I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
+fn read_form<I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
@@ -60,7 +63,7 @@ where
     }
 }
 
-fn read_seq<'a, I>(it: &mut Peekable<I>, until: Token) -> Result<Vec<MalVal>>
+fn read_seq<I>(it: &mut Peekable<I>, until: Token) -> Result<Vec<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
@@ -70,12 +73,14 @@ where
             it.next();
             return Ok(res);
         }
-        read_form(it)?.map(|f| res.push(f));
+        if let Some(f) = read_form(it)? {
+            res.push(f)
+        }
     }
     Err(ParseError::EOF)
 }
 
-fn read_atom<'a, I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
+fn read_atom<I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
@@ -107,12 +112,11 @@ enum Token {
     SingleQuote,
     Tick,
     Int(u64),
-    Comment(String),
     Str(String),
     Lit(String),
 }
 
-fn tokenize<'a>(input: &'a str) -> Result<Vec<Token>> {
+fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut result = Vec::new();
     let mut it = input.chars().peekable();
 
@@ -206,7 +210,7 @@ fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> Result<String>
             }
         }
     }
-    return Err(ParseError::EOF);
+    Err(ParseError::EOF)
 }
 
 fn read_literal<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_char: char) -> String {
@@ -224,7 +228,7 @@ fn read_literal<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_char: char
             }
         }
     }
-    return s;
+    s
 }
 
 #[cfg(test)]
