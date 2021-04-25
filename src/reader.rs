@@ -82,7 +82,16 @@ where
     it.next().map_or(Ok(None), |tok| match tok {
         Token::Int(i) => Ok(Some(MalVal::Atom(MalAtom::Int(i)))),
         Token::Str(s) => Ok(Some(MalVal::Atom(MalAtom::Str(s)))),
-        Token::Lit(l) => Ok(Some(MalVal::Atom(MalAtom::Sym(l)))),
+        Token::Lit(l) => {
+            let s: &str = &l;
+            let atom = match s {
+                "nil" => MalAtom::Nil,
+                "true" => MalAtom::True,
+                "false" => MalAtom::False,
+                _ => MalAtom::Sym(l),
+            };
+            Ok(Some(MalVal::Atom(atom)))
+        }
         _ => Err(ParseError::UnxpectedToken(format!("{:?}", tok))),
     })
 }
@@ -377,6 +386,21 @@ mod tests {
                         MalVal::Atom(MalAtom::Str("world".into())),
                     ])
                 ]),]
+            );
+        }
+
+        {
+            let s = r#"
+            (nil true false)
+            "#;
+            let v = read_str(&s).unwrap();
+            assert_eq!(
+                *v.first().unwrap(),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Nil),
+                    MalVal::Atom(MalAtom::True),
+                    MalVal::Atom(MalAtom::False),
+                ])
             );
         }
     }
