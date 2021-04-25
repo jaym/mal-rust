@@ -1,5 +1,7 @@
+use rustyline;
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
+use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
 use types::{MalAtom, MalVal};
 
 mod reader;
@@ -39,8 +41,31 @@ fn rep(input: &str) {
     );
 }
 
+#[derive(Completer, Helper, Highlighter, Hinter)]
+struct InputValidator {}
+
+impl Validator for InputValidator {
+    fn validate(&self, ctx: &mut ValidationContext) -> rustyline::Result<ValidationResult> {
+        use ValidationResult::{Incomplete, Invalid, Valid};
+        let input = ctx.input();
+
+        let result = if let Err(parse_err) = read(input) {
+            match parse_err {
+                reader::ParseError::EOF => Incomplete,
+                _ => Invalid(Some(format!(" ---< {}", parse_err).to_owned())),
+            }
+        } else {
+            Valid(None)
+        };
+
+        Ok(result)
+    }
+}
+
 fn main() {
-    let mut rl = Editor::<()>::new();
+    let mut rl = rustyline::Editor::new();
+    let helper = InputValidator {};
+    rl.set_helper(Some(helper));
 
     loop {
         let readline = rl.readline("user> ");
