@@ -10,6 +10,8 @@ pub enum ParseError {
     UnxpectedToken(String),
     #[error("Unexpected escapse sequence \\{0}")]
     UnknownEscapeSequence(char),
+    #[error("Unexpected newline")]
+    UnexpectedNewline,
 }
 
 pub type Result<T> = std::result::Result<T, ParseError>;
@@ -175,7 +177,7 @@ fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> Result<String>
     while let Some(&c) = it.peek() {
         it.next();
         match c {
-            '\n' => panic!("unexpected newline"),
+            '\n' => return Err(ParseError::UnexpectedNewline),
             '\\' => {
                 if let Some(nc) = it.peek() {
                     match nc {
