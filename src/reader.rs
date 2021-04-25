@@ -138,9 +138,16 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                 let _ = read_comment(&mut it);
                 //result.push(Token::Comment(comment));
             }
+            '-' => {
+                if let Some(num) = read_number(&mut it, None) {
+                    result.push(Token::Int(-num))
+                } else {
+                    result.push(Token::Lit("-".to_owned()));
+                }
+            }
             '0'..='9' => {
-                let num = read_number(&mut it, c);
-                result.push(Token::Int(num))
+                let num = read_number(&mut it, Some(c));
+                result.push(Token::Int(num.unwrap()))
             }
             _ => {
                 if !c.is_whitespace() {
@@ -153,8 +160,12 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
     Ok(result)
 }
 
-fn read_number<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_digit: char) -> i64 {
-    let mut v = first_digit.to_digit(10).unwrap() as i64;
+fn read_number<I: Iterator<Item = char>>(
+    it: &mut Peekable<I>,
+    first_digit: Option<char>,
+) -> Option<i64> {
+    let (mut v, mut num_found) =
+        first_digit.map_or((0i64, 0), |c| (c.to_digit(10).unwrap() as i64, 1));
 
     while let Some(&c) = it.peek() {
         match c {
@@ -162,11 +173,16 @@ fn read_number<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_digit: char
                 it.next();
                 let num = c.to_digit(10).unwrap() as i64;
                 v = v * 10 + num;
+                num_found += 1;
             }
             _ => break,
         }
     }
-    v
+    if num_found > 0 {
+        Some(v)
+    } else {
+        None
+    }
 }
 
 fn read_comment<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
@@ -274,7 +290,7 @@ mod tests {
         }
 
         {
-            let s = "  (+ 0 12 345 6789)";
+            let s = "  (+ 0 12 345 6789 -1 -12 -123)";
             let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
@@ -285,6 +301,9 @@ mod tests {
                     Token::Int(12),
                     Token::Int(345),
                     Token::Int(6789),
+                    Token::Int(-1),
+                    Token::Int(-12),
+                    Token::Int(-123),
                     Token::RightParen,
                 ]
             );
