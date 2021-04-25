@@ -1,50 +1,64 @@
 use crate::types::{MalAtom, MalVal};
-
 use std::iter::Peekable;
+use thiserror::Error;
 
-pub fn read_str<'a>(input: &'a str) -> Vec<MalVal> {
-    let tokens = tokenize(input);
+#[derive(Error, Debug)]
+pub enum ParseError {
+    #[error("Unexpected EOF")]
+    EOF,
+    #[error("Unexpected token {0}")]
+    UnxpectedToken(String),
+    #[error("Unexpected escapse sequence \\{0}")]
+    UnknownEscapeSequence(char),
+}
+
+pub type Result<T> = std::result::Result<T, ParseError>;
+
+pub fn read_str<'a>(input: &'a str) -> Result<Vec<MalVal>> {
+    let tokens = tokenize(input)?;
     let mut it = tokens.into_iter().peekable();
     let mut ret = Vec::new();
     while let Some(_) = it.peek() {
-        let f = read_form(&mut it);
-        ret.push(f);
+        read_form(&mut it)?.map(|f| ret.push(f));
     }
-    ret
+    Ok(ret)
 }
 
-fn read_form<'a, I>(it: &mut Peekable<I>) -> MalVal
+fn read_form<'a, I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
-    let tok = it.peek().unwrap();
-    match tok {
-        Token::SingleQuote => {
-            unimplemented!()
+    if let Some(tok) = it.peek() {
+        match tok {
+            Token::SingleQuote => {
+                unimplemented!()
+            }
+            Token::Tick => {
+                unimplemented!()
+            }
+            Token::LeftParen => {
+                it.next();
+                let seq = read_seq(it, Token::RightParen)?;
+                Ok(Some(MalVal::List(seq)))
+            }
+            Token::LeftBracket => {
+                it.next();
+                let seq = read_seq(it, Token::RightBracket)?;
+                Ok(Some(MalVal::Vector(seq)))
+            }
+            Token::LeftCurly => {
+                it.next();
+                let seq = read_seq(it, Token::RightCurly)?;
+                Ok(Some(MalVal::AssocArray(seq)))
+            }
+            _ => Ok(read_atom(it)?),
         }
-        Token::Tick => {
-            unimplemented!()
-        }
-        Token::LeftParen => {
-            it.next();
-            let seq = read_seq(it, Token::RightParen);
-            MalVal::List(seq)
-        }
-        Token::LeftBracket => {
-            it.next();
-            let seq = read_seq(it, Token::RightBracket);
-            MalVal::Vector(seq)
-        }
-        Token::LeftCurly => {
-            it.next();
-            let seq = read_seq(it, Token::RightCurly);
-            MalVal::AssocArray(seq)
-        }
-        _ => read_atom(it),
+    } else {
+        Ok(None)
     }
 }
 
-fn read_seq<'a, I>(it: &mut Peekable<I>, until: Token) -> Vec<MalVal>
+fn read_seq<'a, I>(it: &mut Peekable<I>, until: Token) -> Result<Vec<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
@@ -52,25 +66,23 @@ where
     while let Some(v) = it.peek() {
         if *v == until {
             it.next();
-            return res;
+            return Ok(res);
         }
-        let form = read_form(it);
-        res.push(form);
+        read_form(it)?.map(|f| res.push(f));
     }
-    panic!("Unexpected EOF")
+    Err(ParseError::EOF)
 }
 
-fn read_atom<'a, I>(it: &mut Peekable<I>) -> MalVal
+fn read_atom<'a, I>(it: &mut Peekable<I>) -> Result<Option<MalVal>>
 where
     I: Iterator<Item = Token>,
 {
-    let tok = it.next().unwrap();
-    match tok {
-        Token::Int(i) => MalVal::Atom(MalAtom::Int(i)),
-        Token::Str(s) => MalVal::Atom(MalAtom::Str(s)),
-        Token::Lit(l) => MalVal::Atom(MalAtom::Sym(l)),
-        _ => panic!("Unexpected token {:?}", tok),
-    }
+    it.next().map_or(Ok(None), |tok| match tok {
+        Token::Int(i) => Ok(Some(MalVal::Atom(MalAtom::Int(i)))),
+        Token::Str(s) => Ok(Some(MalVal::Atom(MalAtom::Str(s)))),
+        Token::Lit(l) => Ok(Some(MalVal::Atom(MalAtom::Sym(l)))),
+        _ => Err(ParseError::UnxpectedToken(format!("{:?}", tok))),
+    })
 }
 
 #[derive(Debug, PartialEq)]
@@ -89,7 +101,7 @@ enum Token {
     Lit(String),
 }
 
-fn tokenize<'a>(input: &'a str) -> Vec<Token> {
+fn tokenize<'a>(input: &'a str) -> Result<Vec<Token>> {
     let mut result = Vec::new();
     let mut it = input.chars().peekable();
 
@@ -104,7 +116,7 @@ fn tokenize<'a>(input: &'a str) -> Vec<Token> {
             '\'' => result.push(Token::SingleQuote),
             '`' => result.push(Token::Tick),
             '"' => {
-                let s = read_string(&mut it);
+                let s = read_string(&mut it)?;
                 result.push(Token::Str(s));
             }
             ';' => {
@@ -123,7 +135,7 @@ fn tokenize<'a>(input: &'a str) -> Vec<Token> {
             }
         }
     }
-    result
+    Ok(result)
 }
 
 fn read_number<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_digit: char) -> u64 {
@@ -158,7 +170,7 @@ fn read_comment<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
     s
 }
 
-fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
+fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> Result<String> {
     let mut s = String::new();
     while let Some(&c) = it.peek() {
         it.next();
@@ -170,20 +182,20 @@ fn read_string<I: Iterator<Item = char>>(it: &mut Peekable<I>) -> String {
                         '"' => s.push('"'),
                         'n' => s.push('\n'),
                         '\\' => s.push('\\'),
-                        _ => panic!(),
+                        c => return Err(ParseError::UnknownEscapeSequence(*c)),
                     }
                     it.next();
                 } else {
-                    panic!("unexpected EOF");
+                    return Err(ParseError::EOF);
                 }
             }
-            '"' => return s,
+            '"' => return Ok(s),
             _ => {
                 s.push(c);
             }
         }
     }
-    panic!("unexpected EOF");
+    return Err(ParseError::EOF);
 }
 
 fn read_literal<I: Iterator<Item = char>>(it: &mut Peekable<I>, first_char: char) -> String {
@@ -212,13 +224,13 @@ mod tests {
     fn test_tokenize() {
         {
             let s = "  \n  \t ";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(v, vec![]);
         }
 
         {
             let s = "  (  ) [ ]}  \n  \t {";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -234,7 +246,7 @@ mod tests {
 
         {
             let s = "  (+ asdf)";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -248,7 +260,7 @@ mod tests {
 
         {
             let s = "  (+ 0 12 345 6789)";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -265,7 +277,7 @@ mod tests {
 
         {
             let s = "  (+ \"asd\\\"f\")";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -279,18 +291,18 @@ mod tests {
 
         {
             let s = "\"a\\nb\"";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(v, vec![Token::Str("a\nb".into()),]);
         }
         {
             let s = "\"a\\\\b\"";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(v, vec![Token::Str("a\\b".into()),]);
         }
 
         {
             let s = " ; ()[]}\t{\n()";
-            let v = tokenize(&s.to_string());
+            let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -307,14 +319,14 @@ mod tests {
         {
             let s = r#"
             "#;
-            let v = read_str(&s);
+            let v = read_str(&s).unwrap();
             assert_eq!(v, vec![],);
         }
         {
             let s = r#"
             (println "hello")
             "#;
-            let v = read_str(&s);
+            let v = read_str(&s).unwrap();
             assert_eq!(
                 *v.first().unwrap(),
                 MalVal::List(vec![
@@ -329,7 +341,7 @@ mod tests {
             (println "hello")
             (print-line "world")
             "#;
-            let v = read_str(&s);
+            let v = read_str(&s).unwrap();
             assert_eq!(
                 v,
                 vec![
@@ -350,7 +362,7 @@ mod tests {
             (fun1! 2 "hello" 
                 (fun2? 3 "world"))
             "#;
-            let v = read_str(&s);
+            let v = read_str(&s).unwrap();
             assert_eq!(
                 v,
                 vec![MalVal::List(vec![

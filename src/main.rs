@@ -5,12 +5,12 @@ use types::{MalAtom, MalVal};
 mod reader;
 mod types;
 
-fn read(input: &str) -> MalVal {
-    let mut v = reader::read_str(input);
+fn read(input: &str) -> reader::Result<MalVal> {
+    let mut v = reader::read_str(input)?;
     if v.len() > 0 {
-        v.swap_remove(0)
+        Ok(v.swap_remove(0))
     } else {
-        MalVal::Atom(MalAtom::Nil)
+        Ok(MalVal::Atom(MalAtom::Nil))
     }
 }
 
@@ -23,10 +23,20 @@ fn print(res: MalVal) {
     println!("{}", v);
 }
 
+fn printerr(e: reader::ParseError) {
+    println!("error: {}", e);
+}
+
 fn rep(input: &str) {
-    let ast = read(input);
-    let res = eval(ast);
-    print(res);
+    read(input).map_or_else(
+        |e| {
+            printerr(e);
+        },
+        |ast| {
+            let res = eval(ast);
+            print(res);
+        },
+    );
 }
 
 fn main() {
