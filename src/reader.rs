@@ -142,7 +142,8 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                 if let Some(num) = read_number(&mut it, None) {
                     result.push(Token::Int(-num))
                 } else {
-                    result.push(Token::Lit("-".to_owned()));
+                    let lit = read_literal(&mut it, c);
+                    result.push(Token::Lit(lit));
                 }
             }
             '0'..='9' => {
@@ -150,7 +151,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                 result.push(Token::Int(num.unwrap()))
             }
             _ => {
-                if !c.is_whitespace() {
+                if !(c.is_whitespace() || c == ',') {
                     let lit = read_literal(&mut it, c);
                     result.push(Token::Lit(lit));
                 }
@@ -254,13 +255,13 @@ mod tests {
     #[test]
     fn test_tokenize() {
         {
-            let s = "  \n  \t ";
+            let s = " , \n  \t ";
             let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(v, vec![]);
         }
 
         {
-            let s = "  (  ) [ ]}  \n  \t {";
+            let s = "  ( ,,, ) [ ]}  \n  \t {";
             let v = tokenize(&s.to_string()).unwrap();
             assert_eq!(
                 v,
