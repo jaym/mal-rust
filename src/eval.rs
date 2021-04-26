@@ -1,66 +1,72 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
 use crate::types::{MalAtom, MalVal};
+use itertools::Itertools;
 use thiserror::Error;
 
-pub struct Environment {}
-type MalFunc = fn(Vec<MalVal>) -> Result<MalVal>;
+mod builtin;
+
+#[derive(Clone)]
+pub struct Environment(Rc<RefCell<EnvironmentInner>>);
+pub type MalFunc = fn(Vec<MalVal>) -> Result<MalVal>;
+
+struct EnvironmentInner {
+    parent: Option<Environment>,
+    builtin: HashMap<String, MalFunc>,
+    data: HashMap<String, MalVal>,
+}
+
+#[derive(Clone)]
+enum EnvVal {
+    Func(MalFunc),
+    Val(MalVal),
+}
 
 impl Environment {
     pub fn new() -> Self {
-        Environment {}
+        Environment(Rc::new(RefCell::new(EnvironmentInner {
+            parent: None,
+            builtin: builtin::defaults(),
+            data: HashMap::new(),
+        })))
     }
 
-    pub fn is_symbol_defined(&self, sym_name: &str) -> bool {
-        matches!(sym_name, "+" | "-" | "*")
+    pub fn new_from(parent: &Environment) -> Self {
+        Environment(Rc::new(RefCell::new(EnvironmentInner {
+            parent: Some(parent.clone()),
+            builtin: builtin::defaults(),
+            data: HashMap::new(),
+        })))
     }
 
-    fn lookup_func(&self, sym_name: &str) -> Option<MalFunc> {
-        match sym_name {
-            "+" => Some(|args: Vec<MalVal>| {
-                let mut acc: i64 = 0;
-                for v in args.into_iter() {
-                    if let MalVal::Atom(MalAtom::Int(num)) = v {
-                        acc += num;
-                    } else {
-                        return Err(EvalError::NotANumber);
-                    }
-                }
-                Ok(MalVal::Atom(MalAtom::Int(acc)))
-            }),
-            "-" => Some(|args: Vec<MalVal>| {
-                let mut first = true;
-                let mut acc: i64 = 0;
-                let mut count = 0;
-                for v in args.into_iter() {
-                    if let MalVal::Atom(MalAtom::Int(num)) = v {
-                        count += 1;
-                        if first {
-                            acc = num;
-                            first = false;
-                        } else {
-                            acc -= num;
-                        }
-                    } else {
-                        return Err(EvalError::NotANumber);
-                    }
-                }
-                if count == 1 {
-                    Ok(MalVal::Atom(MalAtom::Int(-acc)))
-                } else {
-                    Ok(MalVal::Atom(MalAtom::Int(acc)))
-                }
-            }),
-            "*" => Some(|args: Vec<MalVal>| {
-                let mut acc: i64 = 1;
-                for v in args.into_iter() {
-                    if let MalVal::Atom(MalAtom::Int(num)) = v {
-                        acc *= num;
-                    } else {
-                        return Err(EvalError::NotANumber);
-                    }
-                }
-                Ok(MalVal::Atom(MalAtom::Int(acc)))
-            }),
-            _ => None,
+    fn set(&self, sym_name: String, val: MalVal) {
+        self.0.borrow_mut().data.insert(sym_name, val);
+    }
+
+    fn get(&self, sym_name: &str) -> Option<EnvVal> {
+        self.find(sym_name).map(|e| {
+            let env = e.0.borrow();
+            if env.builtin.contains_key(sym_name) {
+                let f = env.builtin[sym_name];
+                EnvVal::Func(f)
+            } else if env.data.contains_key(sym_name) {
+                let v = env.data[sym_name].clone();
+                EnvVal::Val(v)
+            } else {
+                unreachable!()
+            }
+        })
+    }
+
+    fn find(&self, sym_name: &str) -> Option<Environment> {
+        if self.0.borrow().data.contains_key(sym_name)
+            || self.0.borrow().builtin.contains_key(sym_name)
+        {
+            Some(Environment(self.0.clone()))
+        } else if let Some(parent) = &self.0.borrow().parent {
+            parent.find(sym_name)
+        } else {
+            None
         }
     }
 }
@@ -73,35 +79,75 @@ pub enum EvalError {
     SymbolNotFound(String),
     #[error("Not a number")]
     NotANumber,
+    #[error("Not a symbol")]
+    NotASymbol,
+    #[error("Not a list")]
+    NotAList,
     #[error("Function {0} not defined")]
     FunctionUndefined(String),
     #[error("Bad function designator {0}")]
     BadFunctionDesignator(String),
 }
 
-pub fn eval(ast: MalVal, env: &mut Environment) -> Result<MalVal> {
+#[allow(clippy::clippy::collapsible_else_if)]
+pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
     match ast {
-        MalVal::List(list) => {
+        MalVal::List(mut list) => {
             if list.is_empty() {
                 Ok(MalVal::List(list))
             } else {
-                let evaluated = eval_ast(MalVal::List(list), env)?;
-
-                if let MalVal::List(mut list) = evaluated {
-                    // TODO: removing the first element of a vector is not great
-                    // as it shuffles all the values left by one
-                    let sym = list.remove(0);
-                    if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
-                        if let Some(f) = env.lookup_func(&sym_name) {
-                            Ok(f(list)?)
-                        } else {
-                            Err(EvalError::FunctionUndefined(sym_name))
-                        }
+                if list[0] == MalVal::Atom(MalAtom::Sym("def!".to_owned())) {
+                    list.remove(0);
+                    let atom = list.remove(0);
+                    if let MalVal::Atom(MalAtom::Sym(sym_name)) = atom {
+                        let evaluated = eval(list.remove(0), env)?;
+                        env.set(sym_name, evaluated.clone());
+                        Ok(evaluated)
                     } else {
-                        Err(EvalError::BadFunctionDesignator(sym.to_string()))
+                        Err(EvalError::NotASymbol)
+                    }
+                } else if list[0] == MalVal::Atom(MalAtom::Sym("let*".to_owned())) {
+                    list.remove(0);
+                    if let MalVal::List(vars) = list.remove(0) {
+                        let child_env = Environment::new_from(env);
+                        let mut it = vars.into_iter();
+                        while let Some((sym, to_eval)) = it.next_tuple() {
+                            match sym {
+                                MalVal::Atom(MalAtom::Sym(sym_name)) => {
+                                    let evaluated = eval(to_eval, &child_env)?;
+                                    child_env.set(sym_name, evaluated);
+                                }
+                                _ => return Err(EvalError::NotASymbol),
+                            }
+                        }
+                        let to_eval = list.remove(0);
+                        eval(to_eval, &child_env)
+                    } else {
+                        Err(EvalError::NotAList)
                     }
                 } else {
-                    panic!("list evaluated to non list")
+                    let evaluated = eval_ast(MalVal::List(list), env)?;
+
+                    if let MalVal::List(mut list) = evaluated {
+                        // TODO: removing the first element of a vector is not great
+                        // as it shuffles all the values left by one
+                        let sym = list.remove(0);
+                        if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
+                            if let Some(env_val) = env.get(&sym_name) {
+                                if let EnvVal::Func(f) = env_val {
+                                    Ok(f(list)?)
+                                } else {
+                                    Err(EvalError::BadFunctionDesignator(sym_name))
+                                }
+                            } else {
+                                Err(EvalError::FunctionUndefined(sym_name))
+                            }
+                        } else {
+                            Err(EvalError::BadFunctionDesignator(sym.to_string()))
+                        }
+                    } else {
+                        panic!("list evaluated to non list")
+                    }
                 }
             }
         }
@@ -109,12 +155,15 @@ pub fn eval(ast: MalVal, env: &mut Environment) -> Result<MalVal> {
     }
 }
 
-fn eval_ast(ast: MalVal, env: &mut Environment) -> Result<MalVal> {
+fn eval_ast(ast: MalVal, env: &Environment) -> Result<MalVal> {
     match ast {
         MalVal::Atom(atom) => match atom {
             MalAtom::Sym(sym) => {
-                if env.is_symbol_defined(&sym) {
-                    Ok(MalVal::Atom(MalAtom::Sym(sym)))
+                if let Some(env_val) = env.get(&sym) {
+                    match env_val {
+                        EnvVal::Func(_) => Ok(MalVal::Atom(MalAtom::Sym(sym))),
+                        EnvVal::Val(v) => Ok(v),
+                    }
                 } else {
                     Err(EvalError::SymbolNotFound(sym))
                 }
