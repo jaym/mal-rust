@@ -89,65 +89,62 @@ pub enum EvalError {
     BadFunctionDesignator(String),
 }
 
-#[allow(clippy::clippy::collapsible_else_if)]
 pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
     match ast {
         MalVal::List(mut list) => {
             if list.is_empty() {
                 Ok(MalVal::List(list))
-            } else {
-                if list[0] == MalVal::Atom(MalAtom::Sym("def!".to_owned())) {
-                    list.remove(0);
-                    let atom = list.remove(0);
-                    if let MalVal::Atom(MalAtom::Sym(sym_name)) = atom {
-                        let evaluated = eval(list.remove(0), env)?;
-                        env.set(sym_name, evaluated.clone());
-                        Ok(evaluated)
-                    } else {
-                        Err(EvalError::NotASymbol)
-                    }
-                } else if list[0] == MalVal::Atom(MalAtom::Sym("let*".to_owned())) {
-                    list.remove(0);
-                    if let MalVal::List(vars) = list.remove(0) {
-                        let child_env = Environment::new_from(env);
-                        let mut it = vars.into_iter();
-                        while let Some((sym, to_eval)) = it.next_tuple() {
-                            match sym {
-                                MalVal::Atom(MalAtom::Sym(sym_name)) => {
-                                    let evaluated = eval(to_eval, &child_env)?;
-                                    child_env.set(sym_name, evaluated);
-                                }
-                                _ => return Err(EvalError::NotASymbol),
-                            }
-                        }
-                        let to_eval = list.remove(0);
-                        eval(to_eval, &child_env)
-                    } else {
-                        Err(EvalError::NotAList)
-                    }
+            } else if list[0] == MalVal::Atom(MalAtom::Sym("def!".to_owned())) {
+                list.remove(0);
+                let atom = list.remove(0);
+                if let MalVal::Atom(MalAtom::Sym(sym_name)) = atom {
+                    let evaluated = eval(list.remove(0), env)?;
+                    env.set(sym_name, evaluated.clone());
+                    Ok(evaluated)
                 } else {
-                    let evaluated = eval_ast(MalVal::List(list), env)?;
+                    Err(EvalError::NotASymbol)
+                }
+            } else if list[0] == MalVal::Atom(MalAtom::Sym("let*".to_owned())) {
+                list.remove(0);
+                if let MalVal::List(vars) = list.remove(0) {
+                    let child_env = Environment::new_from(env);
+                    let mut it = vars.into_iter();
+                    while let Some((sym, to_eval)) = it.next_tuple() {
+                        match sym {
+                            MalVal::Atom(MalAtom::Sym(sym_name)) => {
+                                let evaluated = eval(to_eval, &child_env)?;
+                                child_env.set(sym_name, evaluated);
+                            }
+                            _ => return Err(EvalError::NotASymbol),
+                        }
+                    }
+                    let to_eval = list.remove(0);
+                    eval(to_eval, &child_env)
+                } else {
+                    Err(EvalError::NotAList)
+                }
+            } else {
+                let evaluated = eval_ast(MalVal::List(list), env)?;
 
-                    if let MalVal::List(mut list) = evaluated {
-                        // TODO: removing the first element of a vector is not great
-                        // as it shuffles all the values left by one
-                        let sym = list.remove(0);
-                        if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
-                            if let Some(env_val) = env.get(&sym_name) {
-                                if let EnvVal::Func(f) = env_val {
-                                    Ok(f(list)?)
-                                } else {
-                                    Err(EvalError::BadFunctionDesignator(sym_name))
-                                }
+                if let MalVal::List(mut list) = evaluated {
+                    // TODO: removing the first element of a vector is not great
+                    // as it shuffles all the values left by one
+                    let sym = list.remove(0);
+                    if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
+                        if let Some(env_val) = env.get(&sym_name) {
+                            if let EnvVal::Func(f) = env_val {
+                                Ok(f(list)?)
                             } else {
-                                Err(EvalError::FunctionUndefined(sym_name))
+                                Err(EvalError::BadFunctionDesignator(sym_name))
                             }
                         } else {
-                            Err(EvalError::BadFunctionDesignator(sym.to_string()))
+                            Err(EvalError::FunctionUndefined(sym_name))
                         }
                     } else {
-                        panic!("list evaluated to non list")
+                        Err(EvalError::BadFunctionDesignator(sym.to_string()))
                     }
+                } else {
+                    panic!("list evaluated to non list")
                 }
             }
         }
@@ -193,18 +190,18 @@ mod tests {
     #[test]
     fn test_eval() {
         {
-            let mut env = Environment::new();
+            let env = Environment::new();
             let ast = MalVal::Atom(MalAtom::Sym("undefined_sym".into()));
-            let evaluated = eval(ast, &mut env).unwrap_err();
+            let evaluated = eval(ast, &env).unwrap_err();
 
             assert_eq!(evaluated, EvalError::SymbolNotFound("undefined_sym".into()));
         }
         {
             for op in &["+", "-", "*"] {
-                let mut env = Environment::new();
+                let env = Environment::new();
                 let ast = MalVal::Atom(MalAtom::Sym((*op).to_owned()));
                 let expected = ast.clone();
-                let evaluated = eval(ast, &mut env).unwrap();
+                let evaluated = eval(ast, &env).unwrap();
 
                 assert_eq!(evaluated, expected);
             }
@@ -219,9 +216,9 @@ mod tests {
             ]
             .into_iter()
             {
-                let mut env = Environment::new();
+                let env = Environment::new();
                 let ast = MalVal::List(vec![atom, MalVal::Atom(MalAtom::Int(2))]);
-                let evaluated = eval(ast, &mut env).unwrap_err();
+                let evaluated = eval(ast, &env).unwrap_err();
                 assert!(matches!(evaluated, EvalError::BadFunctionDesignator(_)))
             }
         }
@@ -235,33 +232,33 @@ mod tests {
                 ]
                 .into_iter()
                 {
-                    let mut env = Environment::new();
+                    let env = Environment::new();
                     let ast = MalVal::List(vec![
                         MalVal::Atom(MalAtom::Sym((*op).to_owned())),
                         atom,
                         MalVal::Atom(MalAtom::Int(2)),
                     ]);
-                    let evaluated = eval(ast, &mut env).unwrap_err();
+                    let evaluated = eval(ast, &env).unwrap_err();
                     assert!(matches!(evaluated, EvalError::NotANumber))
                 }
             }
         }
         {
             for tc in &[("+", 2i64), ("-", -2i64), ("*", 2i64)] {
-                let mut env = Environment::new();
+                let env = Environment::new();
                 let (op, expected) = *tc;
                 let ast = MalVal::List(vec![
                     MalVal::Atom(MalAtom::Sym(op.to_owned())),
                     MalVal::Atom(MalAtom::Int(2)),
                 ]);
-                let evaluated = eval(ast, &mut env).unwrap();
+                let evaluated = eval(ast, &env).unwrap();
 
                 assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(expected)));
             }
         }
         {
             for tc in &[("+", 9i64), ("-", -5i64), ("*", 24i64)] {
-                let mut env = Environment::new();
+                let env = Environment::new();
                 let (op, expected) = *tc;
                 let ast = MalVal::List(vec![
                     MalVal::Atom(MalAtom::Sym(op.to_owned())),
@@ -269,7 +266,7 @@ mod tests {
                     MalVal::Atom(MalAtom::Int(3)),
                     MalVal::Atom(MalAtom::Int(4)),
                 ]);
-                let evaluated = eval(ast, &mut env).unwrap();
+                let evaluated = eval(ast, &env).unwrap();
 
                 assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(expected)));
             }
