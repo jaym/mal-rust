@@ -554,4 +554,36 @@ mod tests {
             assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(7)));
         }
     }
+
+    #[test]
+    fn test_do() {
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![MalVal::Atom(MalAtom::Sym("do".to_string()))]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Nil));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("do".to_string())),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("def!".to_string())),
+                    MalVal::Atom(MalAtom::Sym("a".to_string())),
+                    MalVal::List(vec![
+                        MalVal::Atom(MalAtom::Sym("+".to_string())),
+                        MalVal::Atom(MalAtom::Int(2)),
+                        MalVal::Atom(MalAtom::Int(3)),
+                    ]),
+                ]),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("+".to_string())),
+                    MalVal::Atom(MalAtom::Sym("a".to_string())),
+                    MalVal::Atom(MalAtom::Int(4)),
+                ]),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(9)));
+        }
+    }
 }
