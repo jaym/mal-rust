@@ -1,7 +1,11 @@
+use eval::builtin;
 use rustyline::error::ReadlineError;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
-use types::{MalAtom, MalVal};
+use types::{
+    env::{Environment, EnvironmentBuilder},
+    EvalResult, MalAtom, MalVal,
+};
 
 mod eval;
 mod reader;
@@ -16,7 +20,7 @@ fn read(input: &str) -> reader::Result<MalVal> {
     }
 }
 
-fn eval(ast: MalVal, env: &mut eval::Environment) -> eval::Result<MalVal> {
+fn eval(ast: MalVal, env: &mut Environment) -> EvalResult<MalVal> {
     eval::eval(ast, env)
 }
 
@@ -29,7 +33,7 @@ fn print_err<T: std::fmt::Display>(e: T) {
     println!("error: {}", e);
 }
 
-fn rep(input: &str, env: &mut eval::Environment) {
+fn rep(input: &str, env: &mut Environment) {
     read(input).map_or_else(
         |e| {
             print_err(e);
@@ -65,7 +69,9 @@ fn main() {
     let mut rl = rustyline::Editor::new();
     let helper = InputValidator {};
     rl.set_helper(Some(helper));
-    let mut env = eval::Environment::new();
+    let mut env = EnvironmentBuilder::new()
+        .with_builtins(builtin::defaults())
+        .build();
     loop {
         let readline = rl.readline("user> ");
         match readline {

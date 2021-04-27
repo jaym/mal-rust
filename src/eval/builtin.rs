@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{MalAtom, MalVal};
-
-use super::{EvalError, NativeFn, Result};
+use crate::types::{EvalError, EvalResult, MalAtom, MalVal, NativeFn};
 
 pub fn defaults() -> HashMap<String, NativeFn> {
     let mut h: HashMap<String, NativeFn> = HashMap::new();
@@ -12,7 +10,7 @@ pub fn defaults() -> HashMap<String, NativeFn> {
     h
 }
 
-fn add(args: Vec<MalVal>) -> Result<MalVal> {
+fn add(args: Vec<MalVal>) -> EvalResult<MalVal> {
     let mut acc: i64 = 0;
     for v in args.into_iter() {
         if let MalVal::Atom(MalAtom::Int(num)) = v {
@@ -24,7 +22,7 @@ fn add(args: Vec<MalVal>) -> Result<MalVal> {
     Ok(MalVal::Atom(MalAtom::Int(acc)))
 }
 
-fn sub(args: Vec<MalVal>) -> Result<MalVal> {
+fn sub(args: Vec<MalVal>) -> EvalResult<MalVal> {
     let mut first = true;
     let mut acc: i64 = 0;
     let mut count = 0;
@@ -48,7 +46,7 @@ fn sub(args: Vec<MalVal>) -> Result<MalVal> {
     }
 }
 
-fn mul(args: Vec<MalVal>) -> Result<MalVal> {
+fn mul(args: Vec<MalVal>) -> EvalResult<MalVal> {
     let mut acc: i64 = 1;
     for v in args.into_iter() {
         if let MalVal::Atom(MalAtom::Int(num)) = v {

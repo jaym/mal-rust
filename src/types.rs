@@ -1,4 +1,9 @@
 use std::fmt::Display;
+use thiserror::Error;
+
+use self::env::Environment;
+
+pub mod env;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MalVal {
@@ -6,7 +11,9 @@ pub enum MalVal {
     List(Vec<MalVal>),
     Vector(Vec<MalVal>),
     AssocArray(Vec<MalVal>),
+    Fn(Box<MalFn>),
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MalAtom {
     Nil,
@@ -15,6 +22,35 @@ pub enum MalAtom {
     Sym(String),
     Str(String),
     Int(i64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MalFn {
+    pub env: Environment,
+    pub body: MalVal,
+    pub binds: Vec<String>,
+}
+
+pub type NativeFn = fn(Vec<MalVal>) -> EvalResult<MalVal>;
+
+pub type EvalResult<T> = std::result::Result<T, EvalError>;
+
+#[derive(Error, Debug, PartialEq)]
+pub enum EvalError {
+    #[error("Symbol {0} not in environment")]
+    SymbolNotFound(String),
+    #[error("Not a number")]
+    NotANumber,
+    #[error("Not a symbol")]
+    NotASymbol,
+    #[error("Not a list")]
+    NotAList,
+    #[error("Function {0} not defined")]
+    FunctionUndefined(String),
+    #[error("Bad function designator {0}")]
+    BadFunctionDesignator(String),
+    #[error("Invalid arguments provided")]
+    InvalidArgs,
 }
 
 impl Display for MalVal {
@@ -37,6 +73,9 @@ impl Display for MalVal {
                 f.write_str("{")?;
                 fmt_seq(f, seq)?;
                 f.write_str("}")?;
+            }
+            MalVal::Fn(_) => {
+                write!(f, "#<function>")?;
             }
         }
         Ok(())

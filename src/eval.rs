@@ -1,97 +1,12 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
-use crate::types::{MalAtom, MalVal};
+use crate::types::{
+    env::{EnvVal, Environment, EnvironmentBuilder},
+    EvalError, EvalResult, MalAtom, MalFn, MalVal,
+};
 use itertools::Itertools;
-use thiserror::Error;
 
-mod builtin;
+pub mod builtin;
 
-#[derive(Clone)]
-pub struct Environment(Rc<RefCell<EnvironmentInner>>);
-pub type NativeFn = fn(Vec<MalVal>) -> Result<MalVal>;
-
-struct EnvironmentInner {
-    parent: Option<Environment>,
-    builtin: HashMap<String, NativeFn>,
-    data: HashMap<String, MalVal>,
-}
-
-#[derive(Clone)]
-enum EnvVal {
-    NativeFn(NativeFn),
-    Val(MalVal),
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        Environment(Rc::new(RefCell::new(EnvironmentInner {
-            parent: None,
-            builtin: builtin::defaults(),
-            data: HashMap::new(),
-        })))
-    }
-
-    pub fn new_from(parent: &Environment) -> Self {
-        Environment(Rc::new(RefCell::new(EnvironmentInner {
-            parent: Some(parent.clone()),
-            builtin: builtin::defaults(),
-            data: HashMap::new(),
-        })))
-    }
-
-    fn set(&self, sym_name: String, val: MalVal) {
-        self.0.borrow_mut().data.insert(sym_name, val);
-    }
-
-    fn get(&self, sym_name: &str) -> Option<EnvVal> {
-        self.find(sym_name).map(|e| {
-            let env = e.0.borrow();
-            if env.builtin.contains_key(sym_name) {
-                let f = env.builtin[sym_name];
-                EnvVal::NativeFn(f)
-            } else if env.data.contains_key(sym_name) {
-                let v = env.data[sym_name].clone();
-                EnvVal::Val(v)
-            } else {
-                unreachable!()
-            }
-        })
-    }
-
-    fn find(&self, sym_name: &str) -> Option<Environment> {
-        if self.0.borrow().data.contains_key(sym_name)
-            || self.0.borrow().builtin.contains_key(sym_name)
-        {
-            Some(Environment(self.0.clone()))
-        } else if let Some(parent) = &self.0.borrow().parent {
-            parent.find(sym_name)
-        } else {
-            None
-        }
-    }
-}
-
-pub type Result<T> = std::result::Result<T, EvalError>;
-
-#[derive(Error, Debug, PartialEq)]
-pub enum EvalError {
-    #[error("Symbol {0} not in environment")]
-    SymbolNotFound(String),
-    #[error("Not a number")]
-    NotANumber,
-    #[error("Not a symbol")]
-    NotASymbol,
-    #[error("Not a list")]
-    NotAList,
-    #[error("Function {0} not defined")]
-    FunctionUndefined(String),
-    #[error("Bad function designator {0}")]
-    BadFunctionDesignator(String),
-    #[error("Invalid arguments provided")]
-    InvalidArgs,
-}
-
-pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
+pub fn eval(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
     match ast {
         MalVal::List(list) => {
             if list.is_empty() {
@@ -100,6 +15,8 @@ pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
                 handle_def(env, list)
             } else if list[0] == MalVal::Atom(MalAtom::Sym("let*".to_owned())) {
                 handle_let(env, list)
+            } else if list[0] == MalVal::Atom(MalAtom::Sym("fn*".to_owned())) {
+                handle_fn(env, list)
             } else {
                 let evaluated = eval_ast(MalVal::List(list), env)?;
 
@@ -117,6 +34,13 @@ pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
                         } else {
                             Err(EvalError::FunctionUndefined(sym_name))
                         }
+                    } else if let MalVal::Fn(fbox) = sym {
+                        let f = *fbox;
+                        let child_env = EnvironmentBuilder::new().with_parent(&f.env).build();
+                        for (s, v) in f.binds.into_iter().zip(list.into_iter()) {
+                            child_env.set(s, v);
+                        }
+                        eval(f.body, &child_env)
                     } else {
                         Err(EvalError::BadFunctionDesignator(sym.to_string()))
                     }
@@ -129,7 +53,7 @@ pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
     }
 }
 
-fn eval_ast(ast: MalVal, env: &Environment) -> Result<MalVal> {
+fn eval_ast(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
     match ast {
         MalVal::Atom(atom) => match atom {
             MalAtom::Sym(sym) => {
@@ -157,10 +81,13 @@ fn eval_ast(ast: MalVal, env: &Environment) -> Result<MalVal> {
         MalVal::AssocArray(_) => {
             unimplemented!()
         }
+        MalVal::Fn(_) => {
+            unreachable!()
+        }
     }
 }
 
-fn handle_def(env: &Environment, mut list: Vec<MalVal>) -> Result<MalVal> {
+fn handle_def(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
     if list.len() != 3 {
         return Err(EvalError::InvalidArgs);
     }
@@ -174,13 +101,13 @@ fn handle_def(env: &Environment, mut list: Vec<MalVal>) -> Result<MalVal> {
         Err(EvalError::NotASymbol)
     }
 }
-fn handle_let(env: &Environment, mut list: Vec<MalVal>) -> Result<MalVal> {
+fn handle_let(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
     if list.len() != 3 {
         return Err(EvalError::InvalidArgs);
     }
     list.remove(0);
     if let MalVal::List(vars) = list.remove(0) {
-        let child_env = Environment::new_from(env);
+        let child_env = EnvironmentBuilder::new().with_parent(env).build();
         if vars.len() % 2 != 0 {
             return Err(EvalError::InvalidArgs);
         }
@@ -201,14 +128,46 @@ fn handle_let(env: &Environment, mut list: Vec<MalVal>) -> Result<MalVal> {
     }
 }
 
+fn handle_fn(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
+    if list.len() != 3 {
+        return Err(EvalError::InvalidArgs);
+    }
+    list.remove(0);
+    if let MalVal::List(vars) = list.remove(0) {
+        let mut binds = Vec::new();
+
+        for v in vars.into_iter() {
+            if let MalVal::Atom(MalAtom::Sym(sym_name)) = v {
+                binds.push(sym_name);
+            } else {
+                return Err(EvalError::NotASymbol);
+            }
+        }
+        let body = list.remove(0);
+        Ok(MalVal::Fn(Box::new(MalFn {
+            env: env.clone(),
+            body,
+            binds,
+        })))
+    } else {
+        Err(EvalError::NotAList)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn default_env() -> Environment {
+        EnvironmentBuilder::new()
+            .with_builtins(builtin::defaults())
+            .build()
+    }
+
     #[test]
     fn test_eval() {
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::Atom(MalAtom::Sym("undefined_sym".into()));
             let evaluated = eval(ast, &env).unwrap_err();
 
@@ -216,7 +175,7 @@ mod tests {
         }
         {
             for op in &["+", "-", "*"] {
-                let env = Environment::new();
+                let env = default_env();
                 let ast = MalVal::Atom(MalAtom::Sym((*op).to_owned()));
                 let expected = ast.clone();
                 let evaluated = eval(ast, &env).unwrap();
@@ -234,7 +193,7 @@ mod tests {
             ]
             .into_iter()
             {
-                let env = Environment::new();
+                let env = default_env();
                 let ast = MalVal::List(vec![atom, MalVal::Atom(MalAtom::Int(2))]);
                 let evaluated = eval(ast, &env).unwrap_err();
                 assert!(matches!(evaluated, EvalError::BadFunctionDesignator(_)))
@@ -250,7 +209,7 @@ mod tests {
                 ]
                 .into_iter()
                 {
-                    let env = Environment::new();
+                    let env = default_env();
                     let ast = MalVal::List(vec![
                         MalVal::Atom(MalAtom::Sym((*op).to_owned())),
                         atom,
@@ -263,7 +222,7 @@ mod tests {
         }
         {
             for tc in &[("+", 2i64), ("-", -2i64), ("*", 2i64)] {
-                let env = Environment::new();
+                let env = default_env();
                 let (op, expected) = *tc;
                 let ast = MalVal::List(vec![
                     MalVal::Atom(MalAtom::Sym(op.to_owned())),
@@ -276,7 +235,7 @@ mod tests {
         }
         {
             for tc in &[("+", 9i64), ("-", -5i64), ("*", 24i64)] {
-                let env = Environment::new();
+                let env = default_env();
                 let (op, expected) = *tc;
                 let ast = MalVal::List(vec![
                     MalVal::Atom(MalAtom::Sym(op.to_owned())),
@@ -294,14 +253,14 @@ mod tests {
     #[test]
     fn test_def() {
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![MalVal::Atom(MalAtom::Sym("def!".to_string()))]);
             let evaluated = eval(ast, &env).unwrap_err();
 
             assert_eq!(evaluated, EvalError::InvalidArgs);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Sym("a".to_string())),
@@ -311,7 +270,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::InvalidArgs);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Sym("a".to_string())),
@@ -323,7 +282,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::InvalidArgs);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Sym("a".to_string())),
@@ -334,7 +293,7 @@ mod tests {
             assert!(matches!(evaluated, EvalError::SymbolNotFound(_)));
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Int(1)),
@@ -345,7 +304,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::NotASymbol);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Sym("a".to_string())),
@@ -363,7 +322,7 @@ mod tests {
             assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(12)));
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("def!".to_string())),
                 MalVal::Atom(MalAtom::Sym("a".to_string())),
@@ -382,14 +341,14 @@ mod tests {
     #[test]
     fn test_let() {
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![MalVal::Atom(MalAtom::Sym("let*".to_string()))]);
             let evaluated = eval(ast, &env).unwrap_err();
 
             assert_eq!(evaluated, EvalError::InvalidArgs);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::Atom(MalAtom::Int(1)),
@@ -400,7 +359,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::NotAList);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::List(vec![MalVal::Atom(MalAtom::Int(1))]),
@@ -411,7 +370,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::InvalidArgs);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::List(vec![
@@ -425,7 +384,7 @@ mod tests {
             assert_eq!(evaluated, EvalError::NotASymbol);
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::List(vec![
@@ -439,7 +398,7 @@ mod tests {
             assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(7)));
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::List(vec![
@@ -459,7 +418,7 @@ mod tests {
             assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(20)));
         }
         {
-            let env = Environment::new();
+            let env = default_env();
             let ast = MalVal::List(vec![
                 MalVal::Atom(MalAtom::Sym("let*".to_string())),
                 MalVal::List(vec![
