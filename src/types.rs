@@ -53,6 +53,28 @@ pub enum EvalError {
     InvalidArgs,
 }
 
+impl From<bool> for MalAtom {
+    fn from(v: bool) -> Self {
+        if v {
+            MalAtom::True
+        } else {
+            MalAtom::False
+        }
+    }
+}
+
+impl From<i64> for MalAtom {
+    fn from(i: i64) -> Self {
+        MalAtom::Int(i)
+    }
+}
+
+impl From<MalAtom> for MalVal {
+    fn from(a: MalAtom) -> Self {
+        MalVal::Atom(a)
+    }
+}
+
 impl Display for MalVal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
