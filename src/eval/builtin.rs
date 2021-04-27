@@ -151,17 +151,17 @@ mod tests {
         for op in &["=", "<", "<=", ">", ">="] {
             {
                 let v = vec![];
-                let res = fns[op.to_owned()](v).unwrap_err();
+                let res = fns[*op](v).unwrap_err();
                 assert_eq!(res, EvalError::InvalidArgs);
             }
             {
                 let v = vec![MalVal::Atom(MalAtom::Int(0))];
-                let res = fns[op.to_owned()](v).unwrap_err();
+                let res = fns[*op](v).unwrap_err();
                 assert_eq!(res, EvalError::InvalidArgs);
             }
             {
                 let v = vec![MalVal::Atom(MalAtom::Int(0))];
-                let res = fns[op.to_owned()](v).unwrap_err();
+                let res = fns[*op](v).unwrap_err();
                 assert_eq!(res, EvalError::InvalidArgs);
             }
             if op == &"=" {
@@ -172,9 +172,93 @@ mod tests {
                     MalVal::Atom(MalAtom::Sym("a".to_owned())),
                     MalVal::Atom(MalAtom::Sym("b".to_owned())),
                 ];
-                let res = fns[op.to_owned()](v).unwrap_err();
+                let res = fns[*op](v).unwrap_err();
                 assert_eq!(res, EvalError::NotANumber);
             }
+        }
+    }
+
+    #[test]
+    fn test_lt() {
+        let f = defaults()["<"];
+
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(1)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(1))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+    }
+
+    #[test]
+    fn test_lte() {
+        let f = defaults()["<="];
+
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(1)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(1))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+    }
+
+    #[test]
+    fn test_gt() {
+        let f = defaults()[">"];
+
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(1)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(1))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
+        }
+    }
+
+    #[test]
+    fn test_gte() {
+        let f = defaults()[">="];
+
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(1)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::False));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(2))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
+        }
+        {
+            let v = vec![MalVal::Atom(MalAtom::Int(2)), MalVal::Atom(MalAtom::Int(1))];
+            let res = f(v).unwrap();
+            assert_eq!(res, MalVal::Atom(MalAtom::True));
         }
     }
 }
