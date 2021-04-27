@@ -70,57 +70,29 @@ fn eq(args: Vec<MalVal>) -> EvalResult<MalVal> {
     if args.len() != 2 {
         Err(EvalError::InvalidArgs)
     } else {
-        Ok(MalVal::Atom(if args[0] == args[1] {
-            MalAtom::True
-        } else {
-            MalAtom::False
-        }))
+        Ok(MalVal::Atom((args[0] == args[1]).into()))
     }
 }
 
-fn gt(mut args: Vec<MalVal>) -> EvalResult<MalVal> {
-    if args.len() != 2 {
-        Err(EvalError::InvalidArgs)
-    } else {
-        let arg0 = into_int(args.remove(0))?;
-        let arg1 = into_int(args.remove(0))?;
+macro_rules! def_int_op {
+    ($name:ident, $op:tt) => {
+        fn $name(mut args: Vec<MalVal>) -> EvalResult<MalVal> {
+            if args.len() != 2 {
+                Err(EvalError::InvalidArgs)
+            } else {
+                let arg0 = into_int(args.remove(0))?;
+                let arg1 = into_int(args.remove(0))?;
 
-        Ok(MalVal::Atom((arg0 > arg1).into()))
-    }
+                Ok(MalVal::Atom((arg0 $op arg1).into()))
+            }
+        }
+    };
 }
 
-fn gte(mut args: Vec<MalVal>) -> EvalResult<MalVal> {
-    if args.len() != 2 {
-        Err(EvalError::InvalidArgs)
-    } else {
-        let arg0 = into_int(args.remove(0))?;
-        let arg1 = into_int(args.remove(0))?;
-
-        Ok(MalVal::Atom((arg0 >= arg1).into()))
-    }
-}
-
-fn lt(mut args: Vec<MalVal>) -> EvalResult<MalVal> {
-    if args.len() != 2 {
-        Err(EvalError::InvalidArgs)
-    } else {
-        let arg0 = into_int(args.remove(0))?;
-        let arg1 = into_int(args.remove(0))?;
-
-        Ok(MalVal::Atom((arg0 < arg1).into()))
-    }
-}
-
-fn lte(mut args: Vec<MalVal>) -> EvalResult<MalVal> {
-    if args.len() != 2 {
-        Err(EvalError::InvalidArgs)
-    } else {
-        let arg0 = into_int(args.remove(0))?;
-        let arg1 = into_int(args.remove(0))?;
-
-        Ok(MalVal::Atom((arg0 <= arg1).into()))
-    }
-}
+def_int_op!(gt, >);
+def_int_op!(gte, >=);
+def_int_op!(lt, <);
+def_int_op!(lte, <=);
 
 #[allow(clippy::clippy::unnecessary_wraps)]
 fn list(args: Vec<MalVal>) -> EvalResult<MalVal> {
@@ -166,5 +138,43 @@ pub fn into_int(v: MalVal) -> EvalResult<i64> {
         Ok(i)
     } else {
         Err(EvalError::NotANumber)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_int_comparisons() {
+        let fns = defaults();
+        for op in &["=", "<", "<=", ">", ">="] {
+            {
+                let v = vec![];
+                let res = fns[op.to_owned()](v).unwrap_err();
+                assert_eq!(res, EvalError::InvalidArgs);
+            }
+            {
+                let v = vec![MalVal::Atom(MalAtom::Int(0))];
+                let res = fns[op.to_owned()](v).unwrap_err();
+                assert_eq!(res, EvalError::InvalidArgs);
+            }
+            {
+                let v = vec![MalVal::Atom(MalAtom::Int(0))];
+                let res = fns[op.to_owned()](v).unwrap_err();
+                assert_eq!(res, EvalError::InvalidArgs);
+            }
+            if op == &"=" {
+                continue;
+            }
+            {
+                let v = vec![
+                    MalVal::Atom(MalAtom::Sym("a".to_owned())),
+                    MalVal::Atom(MalAtom::Sym("b".to_owned())),
+                ];
+                let res = fns[op.to_owned()](v).unwrap_err();
+                assert_eq!(res, EvalError::NotANumber);
+            }
+        }
     }
 }
