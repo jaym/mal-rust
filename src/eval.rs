@@ -17,6 +17,8 @@ pub fn eval(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
                 handle_let(env, list)
             } else if list[0] == MalVal::Atom(MalAtom::Sym("fn*".to_owned())) {
                 handle_fn(env, list)
+            } else if list[0] == MalVal::Atom(MalAtom::Sym("do".to_owned())) {
+                handle_do(env, list)
             } else {
                 let evaluated = eval_ast(MalVal::List(list), env)?;
 
@@ -155,6 +157,15 @@ fn handle_fn(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
     } else {
         Err(EvalError::NotAList)
     }
+}
+
+fn handle_do(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
+    list.remove(0);
+    let mut ret = MalVal::Atom(MalAtom::Nil);
+    for v in list.into_iter() {
+        ret = eval(v, env)?;
+    }
+    Ok(ret)
 }
 
 #[cfg(test)]
