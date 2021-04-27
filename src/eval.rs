@@ -8,17 +8,17 @@ mod builtin;
 
 #[derive(Clone)]
 pub struct Environment(Rc<RefCell<EnvironmentInner>>);
-pub type MalFunc = fn(Vec<MalVal>) -> Result<MalVal>;
+pub type NativeFn = fn(Vec<MalVal>) -> Result<MalVal>;
 
 struct EnvironmentInner {
     parent: Option<Environment>,
-    builtin: HashMap<String, MalFunc>,
+    builtin: HashMap<String, NativeFn>,
     data: HashMap<String, MalVal>,
 }
 
 #[derive(Clone)]
 enum EnvVal {
-    Func(MalFunc),
+    NativeFn(NativeFn),
     Val(MalVal),
 }
 
@@ -48,7 +48,7 @@ impl Environment {
             let env = e.0.borrow();
             if env.builtin.contains_key(sym_name) {
                 let f = env.builtin[sym_name];
-                EnvVal::Func(f)
+                EnvVal::NativeFn(f)
             } else if env.data.contains_key(sym_name) {
                 let v = env.data[sym_name].clone();
                 EnvVal::Val(v)
@@ -132,7 +132,7 @@ pub fn eval(ast: MalVal, env: &Environment) -> Result<MalVal> {
                     let sym = list.remove(0);
                     if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
                         if let Some(env_val) = env.get(&sym_name) {
-                            if let EnvVal::Func(f) = env_val {
+                            if let EnvVal::NativeFn(f) = env_val {
                                 Ok(f(list)?)
                             } else {
                                 Err(EvalError::BadFunctionDesignator(sym_name))
@@ -158,7 +158,7 @@ fn eval_ast(ast: MalVal, env: &Environment) -> Result<MalVal> {
             MalAtom::Sym(sym) => {
                 if let Some(env_val) = env.get(&sym) {
                     match env_val {
-                        EnvVal::Func(_) => Ok(MalVal::Atom(MalAtom::Sym(sym))),
+                        EnvVal::NativeFn(_) => Ok(MalVal::Atom(MalAtom::Sym(sym))),
                         EnvVal::Val(v) => Ok(v),
                     }
                 } else {

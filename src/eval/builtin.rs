@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crate::types::{MalAtom, MalVal};
 
-use super::{EvalError, MalFunc, Result};
+use super::{EvalError, NativeFn, Result};
 
-pub fn defaults() -> HashMap<String, MalFunc> {
-    let mut h: HashMap<String, MalFunc> = HashMap::new();
+pub fn defaults() -> HashMap<String, NativeFn> {
+    let mut h: HashMap<String, NativeFn> = HashMap::new();
     h.insert("+".to_owned(), add);
     h.insert("-".to_owned(), sub);
     h.insert("*".to_owned(), mul);
