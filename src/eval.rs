@@ -29,25 +29,9 @@ pub fn eval(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
                     // as it shuffles all the values left by one
                     let sym = list.remove(0);
                     if let MalVal::Atom(MalAtom::Sym(sym_name)) = sym {
-                        if let Some(env_val) = env.get(&sym_name) {
-                            if let EnvVal::NativeFn(f) = env_val {
-                                Ok(f(list)?)
-                            } else {
-                                Err(EvalError::BadFunctionDesignator(sym_name))
-                            }
-                        } else {
-                            Err(EvalError::FunctionUndefined(sym_name))
-                        }
+                        apply_native_fn(sym_name, list, env)
                     } else if let MalVal::Fn(fbox) = sym {
-                        let f = *fbox;
-                        if f.binds.len() != list.len() {
-                            return Err(EvalError::InvalidArgs);
-                        }
-                        let child_env = EnvironmentBuilder::new().with_parent(&f.env).build();
-                        for (s, v) in f.binds.into_iter().zip(list.into_iter()) {
-                            child_env.set(s, v);
-                        }
-                        eval(f.body, &child_env)
+                        apply_fn(*fbox, list)
                     } else {
                         Err(EvalError::BadFunctionDesignator(sym.to_string()))
                     }
@@ -58,6 +42,29 @@ pub fn eval(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
         }
         _ => eval_ast(ast, env),
     }
+}
+
+fn apply_native_fn(sym_name: String, args: Vec<MalVal>, env: &Environment) -> EvalResult<MalVal> {
+    if let Some(env_val) = env.get(&sym_name) {
+        if let EnvVal::NativeFn(f) = env_val {
+            Ok(f(args)?)
+        } else {
+            Err(EvalError::BadFunctionDesignator(sym_name))
+        }
+    } else {
+        Err(EvalError::FunctionUndefined(sym_name))
+    }
+}
+
+fn apply_fn(f: MalFn, args: Vec<MalVal>) -> EvalResult<MalVal> {
+    if f.binds.len() != args.len() {
+        return Err(EvalError::InvalidArgs);
+    }
+    let child_env = EnvironmentBuilder::new().with_parent(&f.env).build();
+    for (s, v) in f.binds.into_iter().zip(args.into_iter()) {
+        child_env.set(s, v);
+    }
+    eval(f.body, &child_env)
 }
 
 fn eval_ast(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
