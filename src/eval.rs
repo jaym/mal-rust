@@ -19,6 +19,8 @@ pub fn eval(ast: MalVal, env: &Environment) -> EvalResult<MalVal> {
                 handle_fn(env, list)
             } else if list[0] == MalVal::Atom(MalAtom::Sym("do".to_owned())) {
                 handle_do(env, list)
+            } else if list[0] == MalVal::Atom(MalAtom::Sym("if".to_owned())) {
+                handle_if(env, list)
             } else {
                 let evaluated = eval_ast(MalVal::List(list), env)?;
 
@@ -166,6 +168,24 @@ fn handle_do(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
         ret = eval(v, env)?;
     }
     Ok(ret)
+}
+
+fn handle_if(env: &Environment, mut list: Vec<MalVal>) -> EvalResult<MalVal> {
+    if list.len() < 3 {
+        return Err(EvalError::InvalidArgs);
+    }
+
+    list.remove(0);
+    let cond = eval(list.remove(0), env)?.is_truthy();
+    let t = list.remove(0);
+
+    if cond {
+        eval(t, env)
+    } else if list.is_empty() {
+        Ok(MalVal::Atom(MalAtom::Nil))
+    } else {
+        eval(list.remove(0), env)
+    }
 }
 
 #[cfg(test)]
@@ -584,6 +604,109 @@ mod tests {
             ]);
             let evaluated = eval(ast, &env).unwrap();
             assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(9)));
+        }
+    }
+
+    #[test]
+    fn test_if() {
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![MalVal::Atom(MalAtom::Sym("if".to_string()))]);
+            let evaluated = eval(ast, &env).unwrap_err();
+            assert_eq!(evaluated, EvalError::InvalidArgs);
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::Atom(MalAtom::False),
+            ]);
+            let evaluated = eval(ast, &env).unwrap_err();
+            assert_eq!(evaluated, EvalError::InvalidArgs);
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::Atom(MalAtom::False),
+                MalVal::Atom(MalAtom::Int(7)),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Nil));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::Atom(MalAtom::False),
+                MalVal::Atom(MalAtom::Int(7)),
+                MalVal::Atom(MalAtom::Int(9)),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(9)));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::Atom(MalAtom::True),
+                MalVal::Atom(MalAtom::Int(7)),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(7)));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("=".to_string())),
+                    MalVal::Atom(MalAtom::Int(1)),
+                    MalVal::Atom(MalAtom::Int(2)),
+                ]),
+                MalVal::Atom(MalAtom::Int(7)),
+                MalVal::Atom(MalAtom::Int(9)),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(9)));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("=".to_string())),
+                    MalVal::Atom(MalAtom::Int(1)),
+                    MalVal::Atom(MalAtom::Int(1)),
+                ]),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("+".to_string())),
+                    MalVal::Atom(MalAtom::Int(1)),
+                    MalVal::Atom(MalAtom::Int(2)),
+                ]),
+                MalVal::Atom(MalAtom::Int(9)),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(3)));
+        }
+        {
+            let env = default_env();
+            let ast = MalVal::List(vec![
+                MalVal::Atom(MalAtom::Sym("if".to_string())),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("=".to_string())),
+                    MalVal::Atom(MalAtom::Int(1)),
+                    MalVal::Atom(MalAtom::Int(2)),
+                ]),
+                MalVal::Atom(MalAtom::Int(9)),
+                MalVal::List(vec![
+                    MalVal::Atom(MalAtom::Sym("+".to_string())),
+                    MalVal::Atom(MalAtom::Int(1)),
+                    MalVal::Atom(MalAtom::Int(2)),
+                ]),
+            ]);
+            let evaluated = eval(ast, &env).unwrap();
+            assert_eq!(evaluated, MalVal::Atom(MalAtom::Int(3)));
         }
     }
 }

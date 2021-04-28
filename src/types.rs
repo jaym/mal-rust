@@ -53,6 +53,21 @@ pub enum EvalError {
     InvalidArgs,
 }
 
+impl MalVal {
+    pub fn is_truthy(&self) -> bool {
+        !matches!(
+            self,
+            MalVal::Atom(MalAtom::False) | MalVal::Atom(MalAtom::Nil)
+        )
+    }
+}
+
+impl From<MalVal> for bool {
+    fn from(v: MalVal) -> Self {
+        v.is_truthy()
+    }
+}
+
 impl From<bool> for MalAtom {
     fn from(v: bool) -> Self {
         if v {
@@ -181,6 +196,22 @@ mod tests {
             let v = MalVal::AssocArray(vec![]);
 
             assert_eq!(v.to_string(), "{}")
+        }
+    }
+
+    #[test]
+    fn test_truthiness() {
+        for (v, expected) in &[
+            (MalVal::Atom(MalAtom::Nil), false),
+            (MalVal::Atom(MalAtom::False), false),
+            (MalVal::Atom(MalAtom::True), true),
+            (MalVal::Atom(MalAtom::Sym("some".to_owned())), true),
+            (MalVal::Atom(MalAtom::Str("".to_owned())), true),
+            (MalVal::Atom(MalAtom::Str("not-empty".to_owned())), true),
+            (MalVal::List(vec![]), true),
+            (MalVal::List(vec![MalVal::Atom(MalAtom::Nil)]), true),
+        ] {
+            assert_eq!(v.is_truthy(), *expected, "{} = {}", v, expected);
         }
     }
 }
