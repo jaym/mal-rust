@@ -77,6 +77,7 @@ fn main() {
         match readline {
             Ok(line) => {
                 rep(&line, &mut env);
+                rl.add_history_entry(line.as_str());
             }
             Err(ReadlineError::Interrupted) => {
                 break;
